@@ -172,7 +172,7 @@
     z-index: 100;
   }
   .player-box.active { display: block; }
-  .player-box #ytPlayerMount { width: 100%; height: 146px; border-radius: 3px; overflow: hidden; background: #000; }
+  .player-box #ytPlayerFrame { width: 100%; height: 146px; border: none; border-radius: 3px; display: block; background: #000; }
   .player-box .now {
     font-size: 11px;
     opacity: 0.8;
@@ -194,36 +194,6 @@
     padding: 0 4px;
   }
   .player-box .close-btn:hover { opacity: 1; }
-  .player-box .player-error {
-    font-size: 11px;
-    color: #f0b0a0;
-    margin-top: 6px;
-    display: none;
-  }
-  .player-box .player-error.show { display: block; }
-
-  .player-controls {
-    display: flex;
-    gap: 6px;
-    margin-top: 6px;
-  }
-  .ctrl-btn {
-    flex: 1;
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.15);
-    color: var(--paper);
-    font-size: 12px;
-    padding: 5px 4px;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .ctrl-btn:hover { background: rgba(255,255,255,0.16); }
-  .ctrl-btn.on {
-    background: var(--gold);
-    border-color: var(--gold);
-    color: var(--ink);
-    font-weight: 600;
-  }
 
   .empty-state { font-size: 13px; color: var(--ink-soft); padding: 20px 0; text-align: center; }
   .status { font-size: 12px; margin-top: 8px; color: var(--ink-soft); }
@@ -296,23 +266,15 @@
   <div class="player-box" id="playerBox">
     <button class="close-btn" id="closePlayerBtn" title="閉じる">✕</button>
     <div class="now" id="nowPlayingLabel"></div>
-    <div id="ytPlayerMount"></div>
-    <div class="player-error" id="playerError">再生中にエラーが発生しました。この動画は埋め込み再生が許可されていない可能性があります。</div>
-    <div class="player-controls">
-      <button id="shuffleBtn" class="ctrl-btn" title="シャッフル">🔀</button>
-      <button id="nextBtn" class="ctrl-btn" title="次の曲へ">⏭</button>
-      <button id="repeatBtn" class="ctrl-btn" title="リピート">🔁 オフ</button>
-    </div>
+    <iframe id="ytPlayerFrame" src="" allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
   </div>
 
 </div>
 
-<script src="https://www.youtube.com/iframe_api"></script>
 <script>
 (function () {
   let tracks = [];         // [{videoId, title, album, releaseYear, viewCount, fetchedAt}]
   let rankedList = [];     // tracksをviewCount降順に並べ、rank/percentileを付与したもの
-  let currentVisible = []; // 再生数ランキング(絞り込み後)で現在表示中のトラック一覧
 
   const $ = (id) => document.getElementById(id);
 
@@ -419,8 +381,6 @@
       filtered = filtered.slice(0, topN);
     }
 
-    currentVisible = filtered;
-
     $("rankMeta").textContent = `全 ${rankedList.length} 曲中、条件に合致する ${filtered.length} 曲を表示しています。`;
 
     const tbody = $("rankBody");
@@ -445,7 +405,7 @@
     }
 
     tbody.querySelectorAll(".play-btn").forEach(btn => {
-      btn.addEventListener("click", () => playFromList(currentVisible, btn.dataset.video, btn.dataset.title));
+      btn.addEventListener("click", () => playTrack(btn.dataset.video, btn.dataset.title));
     });
   }
 
@@ -484,7 +444,7 @@
 
     resultBox.querySelectorAll(".search-play-btn").forEach(btn => {
       btn.addEventListener("click", (e) => {
-        playFromList(hits, e.currentTarget.dataset.video, e.currentTarget.dataset.title);
+        playTrack(e.currentTarget.dataset.video, e.currentTarget.dataset.title);
       });
     });
   }
@@ -492,148 +452,16 @@
   $("searchInput").addEventListener("input", updateSearchResults);
   $("albumSearchInput").addEventListener("input", updateSearchResults);
 
-  // ---- 再生キュー・シャッフル・リピート ----
-  let ytApiReady = false;
-  let ytPlayer = null;
-  let playerReady = false;      // 現在のプレーヤーインスタンスがonReady済みか
-  let pendingVideoId = null;    // YouTube API自体の読込待ち
-  let pendingLoadVideoId = null; // プレーヤーインスタンスのready待ち
-  let playQueue = [];
-  let queueIndex = -1;
-  let shuffleMode = false;
-  let repeatMode = "off"; // "off" | "one" | "all"
-
-  function onYouTubeIframeAPIReady() {
-    ytApiReady = true;
-    if (pendingVideoId) {
-      const vid = pendingVideoId;
-      pendingVideoId = null;
-      createPlayer(vid);
-    }
-  }
-  window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
-
-  function createPlayer(videoId) {
-    $("playerError").classList.remove("show");
-    playerReady = false;
-    ytPlayer = new YT.Player("ytPlayerMount", {
-      height: "146",
-      width: "100%",
-      videoId: videoId,
-      playerVars: { autoplay: 1, rel: 0 },
-      events: {
-        onReady: () => {
-          playerReady = true;
-          if (pendingLoadVideoId) {
-            const v = pendingLoadVideoId;
-            pendingLoadVideoId = null;
-            ytPlayer.loadVideoId(v);
-          }
-        },
-        onStateChange: onPlayerStateChange,
-        onError: onPlayerError,
-      },
-    });
-  }
-
-  function onPlayerError(event) {
-    // 2:不正なパラメータ 5:HTML5プレーヤーエラー 100:動画が見つからない
-    // 101/150:埋め込み再生が許可されていない
-    $("playerError").classList.add("show");
-    console.error("YouTube player error code:", event.data);
-  }
-
-  function onPlayerStateChange(event) {
-    if (event.data === YT.PlayerState.PLAYING) {
-      $("playerError").classList.remove("show");
-    }
-    if (event.data === YT.PlayerState.ENDED) {
-      if (repeatMode === "one") {
-        ytPlayer.seekTo(0);
-        ytPlayer.playVideo();
-      } else {
-        advanceQueue();
-      }
-    }
-  }
-
-  function shuffleArray(arr) {
-    const a = arr.slice();
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
-  }
-
-  function playFromList(list, startVideoId, startTitle) {
-    const startTrack =
-      list.find(t => t.videoId === startVideoId) ||
-      { videoId: startVideoId, title: startTitle, album: "" };
-
-    let rest = list.filter(t => t.videoId !== startVideoId);
-    if (shuffleMode) rest = shuffleArray(rest);
-
-    playQueue = [startTrack, ...rest];
-    queueIndex = 0;
-    loadCurrentQueueTrack();
-  }
-
-  function advanceQueue() {
-    queueIndex++;
-    if (queueIndex >= playQueue.length) {
-      if (repeatMode === "all" && playQueue.length > 0) {
-        queueIndex = 0;
-      } else {
-        return; // キュー終了。プレーヤーは開いたままにする。
-      }
-    }
-    loadCurrentQueueTrack();
-  }
-
-  function loadCurrentQueueTrack() {
-    const track = playQueue[queueIndex];
-    if (!track) return;
-
-    // 先にプレーヤー枠を表示してサイズを確保してから、プレーヤーを生成/更新する
-    // (非表示 = サイズ0 の状態でプレーヤーを生成すると初期化に失敗するため)
+  // ---- 再生(シンプル版: クリックした曲をそのままiframeに読み込むだけ) ----
+  function playTrack(videoId, title) {
     $("playerBox").classList.add("active");
-    $("nowPlayingLabel").textContent = "再生中: " + track.title;
-
-    if (!ytApiReady) {
-      pendingVideoId = track.videoId;
-      return;
-    }
-    if (!ytPlayer) {
-      createPlayer(track.videoId);
-    } else if (playerReady) {
-      $("playerError").classList.remove("show");
-      ytPlayer.loadVideoId(track.videoId);
-    } else {
-      // プレーヤーインスタンスは存在するが、まだonReady前 -> ready後に読み込む
-      pendingLoadVideoId = track.videoId;
-    }
+    $("nowPlayingLabel").textContent = "再生中: " + title;
+    $("ytPlayerFrame").src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`;
   }
-
-  $("shuffleBtn").addEventListener("click", () => {
-    shuffleMode = !shuffleMode;
-    $("shuffleBtn").classList.toggle("on", shuffleMode);
-  });
-
-  $("repeatBtn").addEventListener("click", () => {
-    repeatMode = repeatMode === "off" ? "one" : repeatMode === "one" ? "all" : "off";
-    const label = { off: "🔁 オフ", one: "🔁 1曲", all: "🔁 全曲" }[repeatMode];
-    $("repeatBtn").textContent = label;
-    $("repeatBtn").classList.toggle("on", repeatMode !== "off");
-  });
-
-  $("nextBtn").addEventListener("click", () => advanceQueue());
 
   $("closePlayerBtn").addEventListener("click", () => {
     $("playerBox").classList.remove("active");
-    if (ytPlayer && ytPlayer.stopVideo) ytPlayer.stopVideo();
-    playQueue = [];
-    queueIndex = -1;
+    $("ytPlayerFrame").src = ""; // 再生を確実に停止する
   });
 
   function escapeHtml(s) {
