@@ -243,19 +243,14 @@
 
   <section class="panel" id="setupPanel">
     <h2>データ読込ログ</h2>
-    <div class="meta-line">
-      同じフォルダの genshin_tracks.json を自動読込します(再生数を含め、すべてこのファイルのみで完結します)。
-      ※ file:// では読み込めないため、ローカルサーバー経由(http://localhost:...)、
-      または実際にホスティングされたURLでアクセスしてください。
-    </div>
-    <pre id="loadLog" style="background:#fffdf8; border:1px solid var(--line); border-radius:2px; padding:10px 12px; font-size:12px; font-family:ui-monospace, monospace; white-space:pre-wrap; margin:10px 0 0; min-height:40px;"></pre>
+    <pre id="loadLog" style="background:#fffdf8; border:1px solid var(--line); border-radius:2px; padding:10px 12px; font-size:12px; font-family:ui-monospace, monospace; white-space:pre-wrap; margin:0; min-height:40px;"></pre>
     <div class="row" style="margin-top:8px;">
       <div><button id="reloadAllBtn" class="ghost">再読込</button></div>
     </div>
   </section>
 
   <section class="panel" id="searchPanel" style="display:none;">
-    <h2>楽曲検索</h2>
+    <h2>楽曲検索（中間一致）</h2>
     <div class="row">
       <div>
         <label class="field">楽曲名で検索</label>
@@ -263,14 +258,14 @@
       </div>
       <div>
         <label class="field">アルバム名で検索</label>
-        <input type="text" id="albumSearchInput" placeholder="例: Genshin Impact" />
+        <input type="text" id="albumSearchInput" placeholder="例: 風と異邦人" />
       </div>
     </div>
     <div id="searchResult" style="margin-top:10px;"></div>
   </section>
 
-  <section class="panel" id="rankFilterPanel" style="display:none;">
-    <h2>絞り込み</h2>
+  <section class="panel" id="rankPanel" style="display:none;">
+    <h2>再生数ランキング</h2>
     <div class="row">
       <div>
         <label class="field">アルバムで絞り込み(複数選択可)</label>
@@ -285,11 +280,7 @@
         <input type="number" id="topNInput" min="1" step="1" placeholder="指定なし" />
       </div>
     </div>
-  </section>
-
-  <section class="panel" id="rankPanel" style="display:none;">
-    <h2>再生数ランキング</h2>
-    <div class="meta-line" id="rankMeta"></div>
+    <div class="meta-line" id="rankMeta" style="margin-top:12px;"></div>
     <table class="rank">
       <thead>
         <tr>
@@ -298,6 +289,7 @@
       </thead>
       <tbody id="rankBody"></tbody>
     </table>
+
     <div id="emptyState" class="empty-state" style="display:none;">該当する楽曲がありません。</div>
   </section>
 
@@ -326,11 +318,10 @@
 
   function log(msg, kind) {
     const el = $("loadLog");
-    const time = new Date().toLocaleTimeString("ja-JP");
     const line = document.createElement("div");
     if (kind === "err") line.style.color = "var(--danger)";
     if (kind === "ok") line.style.color = "var(--accent)";
-    line.textContent = `[${time}] ${msg}`;
+    line.textContent = msg;
     el.appendChild(line);
     el.scrollTop = el.scrollHeight;
   }
@@ -387,7 +378,6 @@
     }));
 
     $("searchPanel").style.display = "block";
-    $("rankFilterPanel").style.display = "block";
     $("rankPanel").style.display = "block";
 
     renderAlbumCheckList();
@@ -488,7 +478,7 @@
           <strong>${escapeHtml(hit.title)}</strong>（${escapeHtml(hit.album || "")}）
         </div>
         <div class="big">${hit.rank}位</div>
-        <div>全 ${rankedList.length} 曲中 ${hit.rank}位 ・ 上位 ${hit.percentile.toFixed(1)}% ・ 再生回数 ${hit.viewCount.toLocaleString()}</div>
+        <div>全 ${rankedList.length} 曲中 ・ 上位 ${hit.percentile.toFixed(1)}% ・ 再生回数 ${hit.viewCount.toLocaleString()}</div>
       </div>
     `).join("");
 
@@ -505,7 +495,9 @@
   // ---- 再生キュー・シャッフル・リピート ----
   let ytApiReady = false;
   let ytPlayer = null;
-  let pendingVideoId = null;
+  let playerReady = false;      // 現在のプレーヤーインスタンスがonReady済みか
+  let pendingVideoId = null;    // YouTube API自体の読込待ち
+  let pendingLoadVideoId = null; // プレーヤーインスタンスのready待ち
   let playQueue = [];
   let queueIndex = -1;
   let shuffleMode = false;
@@ -523,12 +515,21 @@
 
   function createPlayer(videoId) {
     $("playerError").classList.remove("show");
+    playerReady = false;
     ytPlayer = new YT.Player("ytPlayerMount", {
       height: "146",
       width: "100%",
       videoId: videoId,
       playerVars: { autoplay: 1, rel: 0 },
       events: {
+        onReady: () => {
+          playerReady = true;
+          if (pendingLoadVideoId) {
+            const v = pendingLoadVideoId;
+            pendingLoadVideoId = null;
+            ytPlayer.loadVideoId(v);
+          }
+        },
         onStateChange: onPlayerStateChange,
         onError: onPlayerError,
       },
@@ -605,9 +606,12 @@
     }
     if (!ytPlayer) {
       createPlayer(track.videoId);
-    } else if (ytPlayer.loadVideoId) {
+    } else if (playerReady) {
       $("playerError").classList.remove("show");
       ytPlayer.loadVideoId(track.videoId);
+    } else {
+      // プレーヤーインスタンスは存在するが、まだonReady前 -> ready後に読み込む
+      pendingLoadVideoId = track.videoId;
     }
   }
 
