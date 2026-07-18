@@ -149,6 +149,12 @@
   .play-btn {
     background: none; border: none; color: var(--accent); font-size: 16px; padding: 2px 6px; cursor: pointer;
   }
+  .play-btn.playing { color: var(--gold); }
+  tr.now-playing-row td { background: var(--accent-soft); }
+  tr.now-playing-row td.rank-num { box-shadow: inset 3px 0 0 var(--gold); }
+  .search-result.now-playing-row {
+    box-shadow: inset 3px 0 0 var(--gold);
+  }
 
   .search-result {
     border: 1px solid var(--gold);
@@ -173,7 +179,7 @@
     z-index: 100;
   }
   .player-box.active { display: block; }
-  .player-box #ytPlayerFrame { width: 100%; height: 146px; border: none; border-radius: 3px; display: block; background: #000; }
+  .player-box #ytPlayerHost { width: 100%; height: 146px; border-radius: 3px; overflow: hidden; background: #000; }
   .player-box .now {
     font-size: 11px;
     opacity: 0.8;
@@ -203,6 +209,30 @@
     z-index: 20;
   }
   .player-box .close-btn:hover { opacity: 1; }
+
+  .player-controls {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .ctrl-btn {
+    flex: 1;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: var(--paper);
+    font-size: 12px;
+    padding: 5px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .ctrl-btn:hover { background: rgba(255,255,255,0.16); }
+  .ctrl-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .ctrl-btn.on {
+    background: var(--gold);
+    border-color: var(--gold);
+    color: var(--ink);
+    font-weight: 600;
+  }
 
   .empty-state { font-size: 13px; color: var(--ink-soft); padding: 20px 0; text-align: center; }
   .status { font-size: 12px; margin-top: 8px; color: var(--ink-soft); }
@@ -241,7 +271,7 @@
     <h2 id="rankPanelTitle">再生数ランキング</h2>
     <div class="row">
       <div>
-        <label class="field">アルバムで絞り込み(複数選択可)</label>
+        <label class="field">アルバムで絞り込み（複数選択可）</label>
         <div class="album-checklist" id="albumCheckList"></div>
       </div>
       <div>
@@ -250,7 +280,7 @@
       </div>
       <div>
         <label class="field">上位 ○曲まで表示</label>
-        <input type="number" id="topNInput" min="1" step="1" placeholder="指定なし" />
+        <input type="number" id="topNInput" min="1" step="1" value="20" />
       </div>
       <div style="flex: 0 0 auto; align-self:flex-end;">
         <button id="resetFilterBtn" class="ghost">リセット</button>
@@ -272,15 +302,26 @@
   <div class="player-box" id="playerBox">
     <button class="close-btn" id="closePlayerBtn" title="閉じる">✕</button>
     <div class="now" id="nowPlayingLabel"></div>
-    <iframe id="ytPlayerFrame" src="" allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+    <div id="ytPlayerHost"><div id="ytPlayerMount"></div></div>
+    <div class="player-controls">
+      <button id="prevBtn" class="ctrl-btn" title="前の曲へ">⏮ 前へ</button>
+      <button id="nextBtn" class="ctrl-btn" title="次の曲へ">次へ ⏭</button>
+    </div>
+    <div class="player-controls">
+      <button id="shuffleBtn" class="ctrl-btn" title="シャッフル">⇄ シャッフル</button>
+      <button id="repeatBtn" class="ctrl-btn" title="リピート">↻ オフ</button>
+    </div>
   </div>
 
 </div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
 
 <script>
 (function () {
   let tracks = [];         // [{videoId, title, album, releaseYear, viewCount, fetchedAt}]
   let rankedList = [];     // tracksをviewCount降順に並べ、rank/percentileを付与したもの
+  let currentVisible = []; // 現在テーブルに表示中(絞り込み後)のトラック一覧
 
   const $ = (id) => document.getElementById(id);
 
@@ -411,6 +452,8 @@
       filtered = filtered.slice(0, topN);
     }
 
+    currentVisible = filtered;
+
     $("rankMeta").textContent = `全 ${rankedList.length} 曲中、条件に合致する ${filtered.length} 曲を表示しています。`;
 
     const tbody = $("rankBody");
@@ -435,8 +478,10 @@
     }
 
     tbody.querySelectorAll(".play-btn").forEach(btn => {
-      btn.addEventListener("click", () => playTrack(btn.dataset.video, btn.dataset.title));
+      btn.addEventListener("click", () => playFromList(currentVisible, btn.dataset.video, btn.dataset.title));
     });
+
+    applyPlayingIcons();
   }
 
   $("minViewsInput").addEventListener("input", renderRankTable);
@@ -445,7 +490,7 @@
   $("resetFilterBtn").addEventListener("click", () => {
     document.querySelectorAll(".album-checkbox:checked").forEach(cb => { cb.checked = false; });
     $("minViewsInput").value = "";
-    $("topNInput").value = "";
+    $("topNInput").value = "20";
     renderRankTable();
   });
 
@@ -481,24 +526,236 @@
 
     resultBox.querySelectorAll(".search-play-btn").forEach(btn => {
       btn.addEventListener("click", (e) => {
-        playTrack(e.currentTarget.dataset.video, e.currentTarget.dataset.title);
+        playFromList(hits, e.currentTarget.dataset.video, e.currentTarget.dataset.title);
       });
     });
+
+    applyPlayingIcons();
   }
 
   $("searchInput").addEventListener("input", updateSearchResults);
   $("albumSearchInput").addEventListener("input", updateSearchResults);
 
-  // ---- 再生(シンプル版: クリックした曲をそのままiframeに読み込むだけ) ----
-  function playTrack(videoId, title) {
-    $("playerBox").classList.add("active");
-    $("nowPlayingLabel").textContent = "再生中: " + title;
-    $("ytPlayerFrame").src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0`;
+  // ---- 再生キュー・連続再生・前へ/次へ ----
+  // YouTube IFrame Player API(JS側でのイベント検知)を使用する。
+  // 過去の不具合対策:
+  //   1) 非表示(display:none)のコンテナ内でプレーヤーを生成すると初期化に失敗する
+  //      -> .activeクラスを付与し、明示的にreflowさせてから生成する
+  //   2) 生成済みプレーヤーに loadVideoId() を呼ぶ方式は、onReady後でも
+  //      一時的にメソッドが未整備で「loadVideoId is not a function」エラーになる
+  //      場合があった -> loadVideoIdは使わず、曲を切り替えるたびにプレーヤー自体を
+  //      破棄して作り直す方式(コンストラクタでvideoIdを直接指定、唯一確実に動く方式)に統一
+  // shuffleMode/repeatModeは将来のシャッフル・リピート機能用のフックとして
+  // 先に用意しておく(現時点ではUIなし、常にoff)。
+  let playQueue = [];
+  let queueIndex = -1;
+  let baseList = []; // 現在のキューの元になった、シャッフルされていない一覧(元の並び順)
+  let shuffleMode = false;      // 将来: シャッフル機能用
+  let repeatMode = "off";       // 将来: "off" | "one" | "all"
+
+  let ytApiReady = false;
+  let ytPlayer = null;
+  let pendingVideoId = null; // YouTube API自体の読込待ちで保留中の動画ID
+
+  function onYouTubeIframeAPIReady() {
+    ytApiReady = true;
+    if (pendingVideoId) {
+      const vid = pendingVideoId;
+      pendingVideoId = null;
+      createPlayer(vid);
+    }
   }
+  window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
+
+  function createPlayer(videoId) {
+    // 既存のプレーヤーがあれば破棄する(destroy()はiframe自体を削除するため、
+    // マウント先のdivを毎回作り直す)
+    if (ytPlayer && typeof ytPlayer.destroy === "function") {
+      try { ytPlayer.destroy(); } catch (e) { /* 無視 */ }
+    }
+    ytPlayer = null;
+    const host = $("ytPlayerHost");
+    host.innerHTML = "";
+    const mount = document.createElement("div");
+    mount.id = "ytPlayerMount";
+    host.appendChild(mount);
+
+    ytPlayer = new YT.Player("ytPlayerMount", {
+      height: "146",
+      width: "100%",
+      videoId: videoId,
+      playerVars: { autoplay: 1, rel: 0 },
+      events: {
+        onStateChange: onPlayerStateChange,
+      },
+    });
+  }
+
+  function onPlayerStateChange(event) {
+    if (event.data === YT.PlayerState.ENDED) {
+      advanceQueue();
+    }
+  }
+
+  function shuffleArray(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function playFromList(list, startVideoId, startTitle) {
+    baseList = list.slice(); // 元の並び順を保持(シャッフルoff復帰用)
+
+    const startIdx = list.findIndex(t => t.videoId === startVideoId);
+    const startTrack = startIdx === -1
+      ? { videoId: startVideoId, title: startTitle, album: "" }
+      : list[startIdx];
+
+    if (shuffleMode) {
+      // シャッフル時: クリックした曲を先頭にし、残りをランダムな順に並べる
+      const rest = startIdx === -1 ? [] : list.filter((_, i) => i !== startIdx);
+      playQueue = [startTrack, ...shuffleArray(rest)];
+      queueIndex = 0;
+    } else {
+      // 通常時: 表示されている順序をそのまま維持し、クリックした曲の位置から開始する
+      playQueue = startIdx === -1 ? [startTrack] : list.slice();
+      queueIndex = startIdx === -1 ? 0 : startIdx;
+    }
+    loadCurrentQueueTrack();
+  }
+
+  function updateNavButtonsState() {
+    $("prevBtn").disabled = repeatMode === "off" && queueIndex <= 0;
+    $("nextBtn").disabled = repeatMode === "off" && queueIndex >= playQueue.length - 1;
+  }
+
+  let currentPlayingVideoId = null;
+
+  function applyPlayingIcons() {
+    document.querySelectorAll(".play-btn").forEach(btn => {
+      const row = btn.closest("tr") || btn.closest(".search-result");
+      if (btn.dataset.video === currentPlayingVideoId) {
+        btn.textContent = "♫";
+        btn.classList.add("playing");
+        if (row) row.classList.add("now-playing-row");
+      } else {
+        btn.textContent = "▶";
+        btn.classList.remove("playing");
+        if (row) row.classList.remove("now-playing-row");
+      }
+    });
+  }
+
+  function scrollToPlayingRow() {
+    const playingBtn = document.querySelector(".play-btn.playing");
+    if (playingBtn) {
+      const row = playingBtn.closest("tr") || playingBtn.closest(".search-result");
+      if (row) row.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }
+
+  // 曲切替の瞬間だけ呼ぶ(アイコン更新+自動スクロール)
+  function updatePlayingIndicators() {
+    applyPlayingIcons();
+    scrollToPlayingRow();
+  }
+
+  function loadCurrentQueueTrack() {
+    const track = playQueue[queueIndex];
+    if (!track) return;
+
+    // 先にプレーヤー枠を表示し、明示的にreflowさせてサイズを確定させてから
+    // プレーヤーを生成する(非表示状態での生成失敗を防ぐため)。
+    const box = $("playerBox");
+    box.classList.add("active");
+    void box.offsetHeight; // 強制reflow
+
+    $("nowPlayingLabel").textContent =
+      `再生中: ${track.title}` + (playQueue.length > 1 ? ` (${queueIndex + 1}/${playQueue.length})` : "");
+    updateNavButtonsState();
+
+    currentPlayingVideoId = track.videoId;
+    updatePlayingIndicators();
+
+    if (!ytApiReady) {
+      pendingVideoId = track.videoId;
+      return;
+    }
+    createPlayer(track.videoId);
+  }
+
+  function advanceQueue() {
+    if (playQueue.length === 0) return;
+    if (repeatMode === "one") {
+      loadCurrentQueueTrack(); // 同じ曲を再読込
+      return;
+    }
+    if (queueIndex < playQueue.length - 1) {
+      queueIndex++;
+    } else if (repeatMode === "all") {
+      queueIndex = 0;
+    } else {
+      return; // キュー終端。何もしない。
+    }
+    loadCurrentQueueTrack();
+  }
+
+  $("prevBtn").addEventListener("click", () => {
+    if (queueIndex > 0) {
+      queueIndex--;
+      loadCurrentQueueTrack();
+    } else if (repeatMode === "all" && playQueue.length > 0) {
+      queueIndex = playQueue.length - 1;
+      loadCurrentQueueTrack();
+    }
+  });
+
+  $("nextBtn").addEventListener("click", () => advanceQueue());
+
+  $("shuffleBtn").addEventListener("click", () => {
+    shuffleMode = !shuffleMode;
+    $("shuffleBtn").classList.toggle("on", shuffleMode);
+
+    // 切り替えるたびに、現在再生中の曲を起点として再生履歴をリセットし、
+    // 常にbaseList(全曲)を母集団として以降のキューを作り直す。
+    // (過去にシャッフルon/offを繰り返しても母集団が狭まっていかないようにするため)
+    if (playQueue.length > 0) {
+      const currentTrack = playQueue[queueIndex];
+      let rest;
+      if (shuffleMode) {
+        rest = shuffleArray(baseList.filter(t => t.videoId !== currentTrack.videoId));
+      } else {
+        // 元の並び順(baseList)で「現在再生中の曲」の直後から続くようにする
+        const baseIdx = baseList.findIndex(t => t.videoId === currentTrack.videoId);
+        rest = baseIdx === -1 ? [] : baseList.slice(baseIdx + 1);
+      }
+      playQueue = [currentTrack, ...rest];
+      queueIndex = 0;
+      updateNavButtonsState();
+    }
+  });
+
+  $("repeatBtn").addEventListener("click", () => {
+    repeatMode = repeatMode === "off" ? "all" : repeatMode === "all" ? "one" : "off";
+    const label = { off: "↻ オフ", one: "↻ 1曲", all: "↻ 全曲" }[repeatMode];
+    $("repeatBtn").textContent = label;
+    $("repeatBtn").classList.toggle("on", repeatMode !== "off");
+    updateNavButtonsState();
+  });
 
   $("closePlayerBtn").addEventListener("click", () => {
     $("playerBox").classList.remove("active");
-    $("ytPlayerFrame").src = ""; // 再生を確実に停止する
+    if (ytPlayer && typeof ytPlayer.destroy === "function") {
+      try { ytPlayer.destroy(); } catch (e) { /* 無視 */ }
+    }
+    ytPlayer = null;
+    playQueue = [];
+    queueIndex = -1;
+    currentPlayingVideoId = null;
+    updatePlayingIndicators();
   });
 
   function escapeHtml(s) {
