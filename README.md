@@ -1,8 +1,8 @@
 # 原神OST台帳
-原神公式（HOYO-MiX）がリリースした楽曲をまとめた台帳です。
+原神公式（HOYO-MiX）がリリースした楽曲をまとめた台帳です。下記の閲覧用URLからアクセスしてください。
 
-閲覧URL：https://leokkym.github.io/
+閲覧用URL：https://leokkym.github.io/
 
-ローカルで取得した楽曲情報（genshin_tracks.json）に基づいています。
+曲名・アルバム名・再生数での楽曲検索と、検索絞り込み後の楽曲リストの再生（ループ・シャッフル可）ができます。
 
-※ 楽曲情報はgenshin_tracks.json作成時点のものです。
+再生数等はYoutubeから取得した楽曲情報（genshin_tracks.json）に基づいています。楽曲情報は作成者がローカル環境で取得した時点のものになります。
