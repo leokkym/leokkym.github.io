@@ -169,59 +169,116 @@
     position: fixed;
     right: 16px;
     bottom: 16px;
-    width: 260px;
+    width: 300px;
+    max-width: calc(100vw - 24px);
     background: var(--ink);
     color: var(--paper);
-    padding: 8px 10px;
-    border-radius: 6px;
+    border-radius: 10px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.35);
     display: none;
     z-index: 100;
   }
   .player-box.active { display: block; }
-  .player-box #ytPlayerHost { width: 100%; height: 146px; border-radius: 3px; overflow: hidden; background: #000; }
+
+  .seek-bar {
+    display: block;
+    width: 100%;
+    height: 4px;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+    accent-color: var(--gold);
+    background: rgba(255,255,255,0.15);
+    -webkit-appearance: none;
+    appearance: none;
+    border-radius: 0;
+  }
+  .seek-bar::-webkit-slider-runnable-track {
+    height: 4px;
+    background: rgba(255,255,255,0.15);
+  }
+  .seek-bar::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 10px;
+    height: 10px;
+    margin-top: -3px;
+    border-radius: 50%;
+    background: var(--gold);
+    cursor: pointer;
+  }
+  .seek-bar::-moz-range-track {
+    height: 4px;
+    background: rgba(255,255,255,0.15);
+  }
+  .seek-bar::-moz-range-thumb {
+    width: 10px;
+    height: 10px;
+    border: none;
+    border-radius: 50%;
+    background: var(--gold);
+    cursor: pointer;
+  }
+
+
+  .player-inner {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .player-box #ytPlayerHost {
+    width: 56px;
+    height: 56px;
+    flex: 0 0 auto;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #000;
+  }
+
+  .player-info { flex: 1; min-width: 0; padding-top: 2px; }
+
   .player-box .now {
     font-size: 11px;
-    opacity: 0.8;
+    opacity: 0.85;
     margin-bottom: 6px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .player-box .close-btn {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    width: 24px;
-    height: 24px;
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0,0,0,0.45);
+    background: rgba(255,255,255,0.08);
     border: none;
     border-radius: 50%;
     color: var(--paper);
-    opacity: 0.85;
-    font-size: 13px;
+    opacity: 0.75;
+    font-size: 12px;
     line-height: 1;
     cursor: pointer;
     padding: 0;
-    z-index: 20;
   }
   .player-box .close-btn:hover { opacity: 1; }
 
   .player-controls {
     display: flex;
-    gap: 6px;
-    margin-top: 6px;
+    gap: 4px;
+    margin-top: 0;
   }
   .ctrl-btn {
     flex: 1;
+    min-width: 0;
     background: rgba(255,255,255,0.08);
     border: 1px solid rgba(255,255,255,0.15);
     color: var(--paper);
-    font-size: 12px;
-    padding: 5px 4px;
+    font-size: 13px;
+    padding: 4px 2px;
     border-radius: 4px;
     cursor: pointer;
   }
@@ -232,6 +289,19 @@
     border-color: var(--gold);
     color: var(--ink);
     font-weight: 600;
+  }
+
+  /* スマホ幅では画面下部に幅いっぱいで固定し、圧迫感を減らす */
+  @media (max-width: 600px) {
+    .player-box {
+      left: 0;
+      right: 0;
+      bottom: 0;
+      width: 100%;
+      max-width: 100%;
+      border-radius: 0;
+      box-shadow: 0 -2px 12px rgba(0,0,0,0.35);
+    }
   }
 
   .empty-state { font-size: 13px; color: var(--ink-soft); padding: 20px 0; text-align: center; }
@@ -300,16 +370,19 @@
   </section>
 
   <div class="player-box" id="playerBox">
-    <button class="close-btn" id="closePlayerBtn" title="閉じる">✕</button>
-    <div class="now" id="nowPlayingLabel"></div>
-    <div id="ytPlayerHost"><div id="ytPlayerMount"></div></div>
-    <div class="player-controls">
-      <button id="prevBtn" class="ctrl-btn" title="前の曲へ">⏮ 前へ</button>
-      <button id="nextBtn" class="ctrl-btn" title="次の曲へ">次へ ⏭</button>
-    </div>
-    <div class="player-controls">
-      <button id="shuffleBtn" class="ctrl-btn" title="シャッフル">⇄ シャッフル</button>
-      <button id="repeatBtn" class="ctrl-btn" title="リピート">↻ オフ</button>
+    <input type="range" id="seekBar" class="seek-bar" min="0" max="100" value="0" step="0.1" />
+    <div class="player-inner">
+      <div id="ytPlayerHost"><div id="ytPlayerMount"></div></div>
+      <div class="player-info">
+        <div class="now" id="nowPlayingLabel"></div>
+        <div class="player-controls">
+          <button id="prevBtn" class="ctrl-btn" title="前の曲へ">⏮</button>
+          <button id="shuffleBtn" class="ctrl-btn" title="シャッフル">⇄</button>
+          <button id="repeatBtn" class="ctrl-btn" title="リピート: オフ">↻</button>
+          <button id="nextBtn" class="ctrl-btn" title="次の曲へ">⏭</button>
+        </div>
+      </div>
+      <button class="close-btn" id="closePlayerBtn" title="閉じる">✕</button>
     </div>
   </div>
 
@@ -580,16 +653,45 @@
     mount.id = "ytPlayerMount";
     host.appendChild(mount);
 
+    $("seekBar").value = 0;
+
     ytPlayer = new YT.Player("ytPlayerMount", {
-      height: "146",
-      width: "100%",
+      height: "56",
+      width: "56",
       videoId: videoId,
-      playerVars: { autoplay: 1, rel: 0 },
+      playerVars: { autoplay: 1, rel: 0, controls: 0, disablekb: 1, modestbranding: 1 },
       events: {
         onStateChange: onPlayerStateChange,
       },
     });
   }
+
+  // ---- シークバー ----
+  // ユーザーがドラッグ操作中は、ポーリングによる自動更新で値が
+  // 上書きされないようisSeekingフラグで抑止する。
+  let isSeeking = false;
+
+  function pollSeekBar() {
+    if (!ytPlayer || isSeeking) return;
+    if (typeof ytPlayer.getCurrentTime !== "function" || typeof ytPlayer.getDuration !== "function") return;
+    try {
+      const duration = ytPlayer.getDuration();
+      const current = ytPlayer.getCurrentTime();
+      if (duration > 0) {
+        $("seekBar").max = duration;
+        $("seekBar").value = current;
+      }
+    } catch (e) { /* プレーヤー破棄直後などは無視 */ }
+  }
+  setInterval(pollSeekBar, 500);
+
+  $("seekBar").addEventListener("pointerdown", () => { isSeeking = true; });
+  $("seekBar").addEventListener("change", () => {
+    if (ytPlayer && typeof ytPlayer.seekTo === "function") {
+      ytPlayer.seekTo(parseFloat($("seekBar").value), true);
+    }
+    isSeeking = false;
+  });
 
   function onPlayerStateChange(event) {
     if (event.data === YT.PlayerState.ENDED) {
@@ -740,8 +842,10 @@
 
   $("repeatBtn").addEventListener("click", () => {
     repeatMode = repeatMode === "off" ? "all" : repeatMode === "all" ? "one" : "off";
-    const label = { off: "↻ オフ", one: "↻ 1曲", all: "↻ 全曲" }[repeatMode];
-    $("repeatBtn").textContent = label;
+    const icon = { off: "↻", one: "↻¹", all: "↻" }[repeatMode];
+    const titleText = { off: "リピート: オフ", one: "リピート: 1曲", all: "リピート: 全曲" }[repeatMode];
+    $("repeatBtn").textContent = icon;
+    $("repeatBtn").title = titleText;
     $("repeatBtn").classList.toggle("on", repeatMode !== "off");
     updateNavButtonsState();
   });
@@ -756,6 +860,7 @@
     queueIndex = -1;
     currentPlayingVideoId = null;
     updatePlayingIndicators();
+    $("seekBar").value = 0;
   });
 
   function escapeHtml(s) {
