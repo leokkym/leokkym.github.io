@@ -753,10 +753,28 @@
 
   function scrollToPlayingRow() {
     const playingBtn = document.querySelector(".play-btn.playing");
-    if (playingBtn) {
-      const row = playingBtn.closest("tr") || playingBtn.closest(".search-result");
-      if (row) row.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
+    if (!playingBtn) return;
+    const row = playingBtn.closest("tr") || playingBtn.closest(".search-result");
+    if (!row) return;
+
+    const rect = row.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+
+    // ミニプレーヤーが画面下部を覆っているため、その高さぶんは
+    // 「見えている」領域から除外する(表示中でない場合は0扱い)
+    const playerBox = $("playerBox");
+    const playerHeight = playerBox.classList.contains("active")
+      ? playerBox.getBoundingClientRect().height
+      : 0;
+    const visibleBottom = viewportHeight - playerHeight;
+
+    // 一部でも実際に見える範囲内にあればスクロールしない。完全に外の場合のみスクロールする。
+    const isFullyOutside = rect.bottom <= 0 || rect.top >= visibleBottom;
+    if (!isFullyOutside) return;
+
+    // 実際に見える範囲(ミニプレーヤーに隠れる部分を除く)の上から1/3の位置に来るようスクロールする
+    const targetY = window.scrollY + rect.top - visibleBottom / 3;
+    window.scrollTo({ top: Math.max(targetY, 0), behavior: "smooth" });
   }
 
   // 曲切替の瞬間だけ呼ぶ(アイコン更新+自動スクロール)
