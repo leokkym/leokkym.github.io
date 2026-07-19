@@ -229,12 +229,21 @@
   }
 
   .player-box #ytPlayerHost {
-    width: 56px;
-    height: 56px;
+    width: 72px;
+    height: 72px;
     flex: 0 0 auto;
     border-radius: 6px;
     overflow: hidden;
     background: #000;
+    position: relative;
+  }
+  /* 実際のプレーヤーはYouTube公式の最低サイズ(200x200)で生成し、
+     見た目だけCSSで72x72に縮小表示する */
+  .player-box #ytPlayerHost iframe {
+    width: 200px;
+    height: 200px;
+    transform: scale(0.36);
+    transform-origin: top left;
   }
 
   .player-info { flex: 1; min-width: 0; padding-top: 2px; }
@@ -656,8 +665,8 @@
     $("seekBar").value = 0;
 
     ytPlayer = new YT.Player("ytPlayerMount", {
-      height: "56",
-      width: "56",
+      height: "200",
+      width: "200",
       videoId: videoId,
       playerVars: { autoplay: 1, rel: 0, controls: 0, disablekb: 1, modestbranding: 1 },
       events: {
